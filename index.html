@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全能账单分析器 (App Store & 支付宝)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome (国内源) -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .drag-active { border-color: #3b82f6; background-color: #eff6ff; }
+        .app-icon { transition: transform 0.2s; }
+        .app-icon:hover { transform: scale(1.1); }
+        /* 简单的加载动画 */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+    <!-- 顶部导航 -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fa-solid fa-wallet text-2xl mr-3 text-blue-600"></i>
+                    <span class="text-xl font-bold text-gray-800">全能账单分析器</span>
+                    <span class="ml-3 px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">App Store & 支付宝</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="format-badge" class="hidden px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                        未知格式
+                    </span>
+                    <a href="#" onclick="window.location.reload()" class="text-gray-500 hover:text-gray-700 text-sm">
+                        <i class="fa-solid fa-rotate-right mr-1"></i> 重置
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- 上传区域 -->
+        <div id="upload-section" class="mb-8">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center transition-all duration-200"
+                 id="drop-zone">
+                <div class="space-y-4">
+                    <div class="mx-auto h-12 w-12 text-gray-400">
+                        <i class="fa-solid fa-file-invoice-dollar text-4xl"></i>
+                    </div>
+                    <div class="text-gray-600">
+                        <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
+                            <span>上传文件</span>
+                            <input id="file-upload" name="file-upload" type="file" accept=".txt,.html,.csv" class="sr-only">
+                        </label>
+                        <p class="pl-1 inline">或将文件拖拽到此处</p>
+                    </div>
+                    <div class="text-xs text-gray-500 space-y-1">
+                        <p>支持格式：</p>
+                        <p>1. App Store 购买记录 (.txt / .html)</p>
+                        <p>2. 支付宝交易明细 (.csv, 自动识别 GBK/UTF-8)</p>
+                    </div>
+                </div>
+            </div>
+            <div id="processing-indicator" class="hidden mt-4 text-center text-blue-600 flex justify-center items-center gap-2">
+                <div class="loader"></div> 正在解析文件...
+            </div>
+            <div id="error-message" class="hidden mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <span class="block sm:inline" id="error-text"></span>
+            </div>
+        </div>
+
+        <!-- 分析结果区域 (默认隐藏) -->
+        <div id="results-section" class="hidden space-y-6">
+            
+            <!-- 概览卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 bg-blue-100 rounded-md p-3">
+                            <i class="fa-solid fa-yen-sign text-blue-600"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-500">总支出</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="stat-total-amount">¥0.00</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 bg-green-100 rounded-md p-3">
+                            <i class="fa-solid fa-receipt text-green-600"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-500">商品总数</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="stat-total-items">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 bg-purple-100 rounded-md p-3">
+                            <i class="fa-solid fa-bag-shopping text-purple-600"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-500">消费最高 商家/App</p>
+                            <p class="text-lg font-semibold text-gray-900 truncate w-32" id="stat-top-app">-</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 bg-yellow-100 rounded-md p-3">
+                            <i class="fa-solid fa-calendar-day text-yellow-600"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-500">统计时间跨度</p>
+                            <p class="text-sm font-semibold text-gray-900" id="stat-date-range">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 月度趋势 -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 lg:col-span-2">
+                    <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">月度消费趋势</h3>
+                    <div class="relative h-64 w-full">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+                <!-- App 占比 -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">消费 Top 5 来源</h3>
+                    <div class="relative h-64 w-full flex justify-center">
+                        <canvas id="appPieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据表格 -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <h3 class="text-lg font-medium text-gray-900">详细记录</h3>
+                    <div class="flex gap-2 w-full sm:w-auto">
+                        <div class="relative rounded-md shadow-sm flex-grow sm:flex-grow-0">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i class="fa-solid fa-search text-gray-400"></i>
+                            </div>
+                            <input type="text" id="table-search" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border" placeholder="搜索 商家、商品或日期...">
+                        </div>
+                        <button onclick="exportToCSV()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            <i class="fa-solid fa-download mr-2"></i> 导出 CSV
+                        </button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('date')">
+                                    日期 <i class="fa-solid fa-sort ml-1"></i>
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    商家 / App
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    商品名称
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    备注 / 状态
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onclick="sortTable('price')">
+                                    金额 <i class="fa-solid fa-sort ml-1"></i>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- 数据行将通过 JS 插入 -->
+                        </tbody>
+                    </table>
+                </div>
+                <!-- 分页控件 -->
+                <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                    <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-sm text-gray-700">
+                                显示第 <span class="font-medium" id="page-start">1</span> 到 <span class="font-medium" id="page-end">10</span> 条，共 <span class="font-medium" id="page-total">0</span> 条
+                            </p>
+                        </div>
+                        <div>
+                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                <button onclick="changePage(-1)" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                    <span class="sr-only">Previous</span>
+                                    <i class="fa-solid fa-chevron-left"></i>
+                                </button>
+                                <button onclick="changePage(1)" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                    <span class="sr-only">Next</span>
+                                    <i class="fa-solid fa-chevron-right"></i>
+                                </button>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- 核心状态 ---
+        let allData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        const pageSize = 20;
+        let sortConfig = { key: 'date', direction: 'desc' };
+        
+        let monthlyChartInstance = null;
+        let pieChartInstance = null;
+
+        // --- 初始化事件 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-upload');
+            const searchInput = document.getElementById('table-search');
+
+            // 拖拽事件处理
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-active'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-active'), false);
+            });
+
+            dropZone.addEventListener('drop', handleDrop, false);
+            fileInput.addEventListener('change', (e) => handleFiles(e.target.files), false);
+            
+            // 搜索事件
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                filterData(term);
+            });
+        });
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            
+            const processingIndicator = document.getElementById('processing-indicator');
+            processingIndicator.classList.remove('hidden');
+            document.getElementById('error-message').classList.add('hidden');
+
+            // 策略：先尝试 UTF-8 读取。如果看起来像是乱码（针对 CSV），则尝试 GBK。
+            // 支付宝 CSV 通常是 GBK，但用户如果编辑过可能是 UTF-8。
+            readFile(file, 'UTF-8', (content, encoding) => {
+                
+                // 检查是否包含“支付宝”关键字或常见的 CSV 结构
+                const isAlipaySignature = content.includes('支付宝') || content.includes('交易记录明细列表');
+                const isLikelyCSV = file.name.toLowerCase().endsWith('.csv');
+
+                // 如果是 CSV 且不包含明确的 UTF-8 中文签名，可能读取乱码了，尝试 GBK
+                // 简单的乱码检测逻辑：看是否找不到 '支付宝' 但文件扩展名是 csv
+                if (isLikelyCSV && !isAlipaySignature) {
+                    console.log("UTF-8 read failed to find signature, retrying with GBK...");
+                    readFile(file, 'GBK', (contentGBK, encodingGBK) => {
+                         parseContent(contentGBK, file.name);
+                         processingIndicator.classList.add('hidden');
+                    });
+                } else {
+                    parseContent(content, file.name);
+                    processingIndicator.classList.add('hidden');
+                }
+            });
+        }
+
+        function readFile(file, encoding, callback) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                callback(e.target.result, encoding);
+            };
+            reader.onerror = () => {
+                showError('读取文件失败');
+                document.getElementById('processing-indicator').classList.add('hidden');
+            };
+            reader.readAsText(file, encoding);
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            document.getElementById('error-text').innerText = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+
+        function setFormatBadge(text, colorClass = "bg-blue-100 text-blue-800") {
+            const badge = document.getElementById('format-badge');
+            badge.innerText = text;
+            badge.className = `px-2 py-1 rounded text-xs font-medium ${colorClass}`;
+            badge.classList.remove('hidden');
+        }
+
+        // --- 核心分发逻辑 ---
+        function parseContent(content, fileName) {
+            const trimmed = content.trim();
+            
+            if (trimmed.startsWith('<') || trimmed.includes('<div class="purchase')) {
+                console.log("Format: HTML");
+                setFormatBadge("App Store (HTML)", "bg-purple-100 text-purple-800");
+                parseHTMLContent(content);
+            } else if (content.includes('支付宝交易记录明细') || content.includes('交易号')) {
+                console.log("Format: Alipay CSV");
+                setFormatBadge("支付宝 (CSV)", "bg-blue-100 text-blue-800");
+                parseAlipayCSV(content);
+            } else if (content.includes('MVL') || content.includes('===') || content.includes('总额 ¥')) {
+                console.log("Format: Text");
+                setFormatBadge("App Store (文本)", "bg-green-100 text-green-800");
+                parseTextContent(content);
+            } else {
+                showError('未识别的文件格式。请上传 App Store 账单或支付宝 CSV。');
+            }
+        }
+
+        // --- 辅助：价格解析 ---
+        function parsePrice(priceStr) {
+            if (!priceStr) return 0.0;
+            // 处理 "1,234.56" 格式
+            const cleanStr = priceStr.toString().replace(/,/g, '').trim();
+            if (cleanStr.includes('免费')) return 0.0;
+            const match = cleanStr.match(/[\d\.]+/);
+            return match ? parseFloat(match[0]) : 0.0;
+        }
+
+        // --- 解析器 1: 支付宝 CSV ---
+        function parseAlipayCSV(content) {
+            // 1. 找到标题行（包含“交易号”的行）
+            const lines = content.split(/\r?\n/);
+            let headerIndex = -1;
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes('交易号') && lines[i].includes('商品名称')) {
+                    headerIndex = i;
+                    break;
+                }
+            }
+
+            if (headerIndex === -1) {
+                showError('无法解析支付宝账单：未找到表头行。');
+                return;
+            }
+
+            // 获取字段索引映射
+            const headers = lines[headerIndex].split(',').map(h => h.trim());
+            const idxTime = headers.findIndex(h => h.includes('交易创建时间'));
+            const idxOther = headers.findIndex(h => h.includes('交易对方'));
+            const idxItem = headers.findIndex(h => h.includes('商品名称'));
+            const idxAmount = headers.findIndex(h => h.includes('金额'));
+            const idxType = headers.findIndex(h => h.includes('收/支'));
+            const idxStatus = headers.findIndex(h => h.includes('交易状态'));
+            const idxRemark = headers.findIndex(h => h.includes('备注'));
+
+            const parsed = [];
+            
+            // 2. 遍历数据行
+            for (let i = headerIndex + 1; i < lines.length; i++) {
+                let line = lines[i].trim();
+                if (!line || line.startsWith('----------------') || line.startsWith('共') || line.startsWith('已支出')) continue;
+
+                // CSV 行解析（处理引号）
+                // 简单的正则匹配 CSV 列：匹配引号内的内容，或者非逗号的内容
+                const matches = line.match(/(?:^|,)(?:"([^"]*)"|([^",]*))/g);
+                if (!matches) continue;
+
+                const row = matches.map(m => {
+                    // 移除分隔符逗号和引号
+                    let val = m.startsWith(',') ? m.slice(1) : m;
+                    if (val.startsWith('"') && val.endsWith('"')) {
+                        val = val.slice(1, -1);
+                    }
+                    return val.trim();
+                });
+
+                // 确保行长度足够
+                if (row.length < headers.length - 2) continue; // 宽松一点
+
+                // 提取数据
+                const type = row[idxType]; // 收/支
+                const status = row[idxStatus]; // 交易状态
+
+                // 仅统计支出，且交易成功的
+                if (type !== '支出' || (status && !status.includes('成功'))) continue;
+
+                const timeStr = row[idxTime];
+                const amountStr = row[idxAmount];
+                
+                let dateObj = new Date();
+                // 支付宝时间格式: 2025/12/31 13:07 或 2025-12-31
+                const dateMatch = timeStr.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+                if (dateMatch) {
+                    dateObj = new Date(dateMatch[1], dateMatch[2] - 1, dateMatch[3]);
+                }
+
+                parsed.push({
+                    rawDate: timeStr.split(' ')[0], // 只保留日期部分用于显示
+                    dateObj: dateObj,
+                    orderId: row[0], // 交易号通常在第一列
+                    appName: row[idxOther] || "未知商户", // 交易对方
+                    itemName: row[idxItem] || "未知商品",
+                    price: parsePrice(amountStr),
+                    extraInfo: row[idxRemark] || "",
+                    iconUrl: null
+                });
+            }
+
+            finalizeParsing(parsed);
+        }
+
+        // --- 解析器 2: 纯文本 (App Store) ---
+        function parseTextContent(content) {
+            const blocks = content.split('===');
+            const parsed = [];
+            
+            blocks.forEach(block => {
+                const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+                if (lines.length < 3) return;
+
+                const dateStr = lines[0];
+                const orderId = lines[1];
+                
+                const itemLinesPool = lines.slice(3);
+                let currentItemBuffer = [];
+
+                for (let i = 0; i < itemLinesPool.length; i++) {
+                    const line = itemLinesPool[i];
+                    currentItemBuffer.push(line);
+
+                    const isPriceLine = line.startsWith('¥') || line === '免费';
+
+                    if (isPriceLine) {
+                        if (currentItemBuffer.length >= 3) {
+                            const itemName = currentItemBuffer[0];
+                            const appName = currentItemBuffer[2];
+                            
+                            let extraInfo = "";
+                            if (currentItemBuffer.length > 4) {
+                                extraInfo = currentItemBuffer.slice(3, -1).join(" ");
+                            }
+                            
+                            const priceStr = currentItemBuffer[currentItemBuffer.length - 1];
+                            const price = parsePrice(priceStr);
+
+                            let dateObj = new Date();
+                            const dateMatch = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+                            if (dateMatch) {
+                                dateObj = new Date(dateMatch[1], dateMatch[2] - 1, dateMatch[3]);
+                            }
+
+                            parsed.push({
+                                rawDate: dateStr,
+                                dateObj: dateObj,
+                                orderId: orderId,
+                                appName: appName,
+                                itemName: itemName,
+                                price: price,
+                                extraInfo: extraInfo,
+                                iconUrl: null
+                            });
+                        }
+                        currentItemBuffer = [];
+                    }
+                }
+            });
+
+            finalizeParsing(parsed);
+        }
+
+        // --- 解析器 3: HTML 源码 (App Store) ---
+        function parseHTMLContent(htmlContent) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlContent, 'text/html');
+            const purchaseBlocks = doc.querySelectorAll('.purchase');
+            
+            const parsed = [];
+
+            if (purchaseBlocks.length === 0) {
+                showError('未在 HTML 中找到订单记录，请确认复制了完整的网页源码。');
+                return;
+            }
+
+            purchaseBlocks.forEach(block => {
+                const header = block.querySelector('.purchase-header');
+                if (!header) return;
+
+                const dateEl = header.querySelector('.invoice-date');
+                let dateStr = "待处理";
+                let dateObj = new Date(); 
+                let orderId = "";
+
+                if (dateEl) {
+                    dateStr = dateEl.innerText.trim();
+                    const dateMatch = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+                    if (dateMatch) {
+                        dateObj = new Date(dateMatch[1], dateMatch[2] - 1, dateMatch[3]);
+                    }
+                } else {
+                    const pendingEl = header.querySelector('.pending-purchases-header');
+                    if (pendingEl) {
+                        dateStr = "待处理订单";
+                    }
+                }
+
+                const orderIdEl = header.querySelector('.second-element');
+                if (orderIdEl) orderId = orderIdEl.innerText.trim();
+
+                const items = block.querySelectorAll('.pli-list.applicable-items .pli');
+                
+                items.forEach(item => {
+                    const titleEl = item.querySelector('.pli-title');
+                    const itemName = titleEl ? titleEl.innerText.trim() : "未知商品";
+
+                    const publisherEl = item.querySelector('.pli-publisher');
+                    const appName = publisherEl ? publisherEl.innerText.trim() : "未知应用";
+
+                    const priceEl = item.querySelector('.pli-price');
+                    const priceStr = priceEl ? priceEl.innerText.trim() : "¥0.00";
+                    const price = parsePrice(priceStr);
+
+                    const infoEl = item.querySelector('.pli-subscription-info');
+                    const extraInfo = infoEl ? infoEl.innerText.trim() : "";
+
+                    const imgEl = item.querySelector('.pli-artwork img');
+                    const iconUrl = imgEl ? imgEl.src : null;
+
+                    parsed.push({
+                        rawDate: dateStr,
+                        dateObj: dateObj,
+                        orderId: orderId,
+                        appName: appName,
+                        itemName: itemName,
+                        price: price,
+                        extraInfo: extraInfo,
+                        iconUrl: iconUrl
+                    });
+                });
+            });
+
+            finalizeParsing(parsed);
+        }
+
+        function finalizeParsing(parsedData) {
+            if (parsedData.length === 0) {
+                showError('未识别到有效数据。请检查文件内容是否正确。');
+                return;
+            }
+
+            allData = parsedData;
+            filteredData = [...allData];
+            
+            // 默认按日期降序
+            filteredData.sort((a, b) => b.dateObj - a.dateObj);
+
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('results-section').classList.remove('hidden');
+            
+            updateDashboard();
+            renderTable();
+        }
+
+        // --- 数据处理与渲染 ---
+
+        function filterData(term) {
+            if (!term) {
+                filteredData = [...allData];
+            } else {
+                filteredData = allData.filter(item => {
+                    return item.appName.toLowerCase().includes(term) || 
+                           item.itemName.toLowerCase().includes(term) ||
+                           item.rawDate.includes(term);
+                });
+            }
+            // 保持当前排序
+            const key = sortConfig.key;
+            const dir = sortConfig.direction === 'asc' ? 1 : -1;
+            filteredData.sort((a, b) => {
+                let valA = a[key === 'date' ? 'dateObj' : key];
+                let valB = b[key === 'date' ? 'dateObj' : key];
+                return (valA > valB ? 1 : -1) * dir;
+            });
+
+            currentPage = 1;
+            updateDashboard(true);
+            renderTable();
+        }
+
+        function sortTable(key) {
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'desc';
+            }
+
+            const dir = sortConfig.direction === 'asc' ? 1 : -1;
+            
+            filteredData.sort((a, b) => {
+                let valA = key === 'date' ? a.dateObj : a[key];
+                let valB = key === 'date' ? b.dateObj : b[key];
+                
+                if (valA < valB) return -1 * dir;
+                if (valA > valB) return 1 * dir;
+                return 0;
+            });
+
+            renderTable();
+        }
+
+        function updateDashboard(updateCharts = true) {
+            // 1. 基础统计
+            const totalAmount = filteredData.reduce((sum, item) => sum + item.price, 0);
+            const totalItems = filteredData.length;
+            
+            // App 聚合
+            const appMap = {};
+            filteredData.forEach(item => {
+                if (!appMap[item.appName]) appMap[item.appName] = 0;
+                appMap[item.appName] += item.price;
+            });
+
+            let topApp = { name: '-', amount: 0 };
+            for (const [name, amount] of Object.entries(appMap)) {
+                if (amount > topApp.amount) {
+                    topApp = { name, amount };
+                }
+            }
+
+            // 时间范围
+            let dateRange = '-';
+            if (filteredData.length > 0) {
+                const validDates = filteredData
+                    .map(d => d.dateObj)
+                    .filter(d => !isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() <= new Date().getFullYear() + 2);
+                
+                if (validDates.length > 0) {
+                    validDates.sort((a,b) => a-b);
+                    const start = validDates[0];
+                    const end = validDates[validDates.length - 1];
+                    const fmt = d => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+                    dateRange = `${fmt(start)} - ${fmt(end)}`;
+                }
+            }
+
+            // 更新 DOM
+            document.getElementById('stat-total-amount').innerText = `¥${totalAmount.toFixed(2)}`;
+            document.getElementById('stat-total-items').innerText = totalItems;
+            document.getElementById('stat-top-app').innerText = topApp.name;
+            document.getElementById('stat-date-range').innerText = dateRange;
+
+            if (updateCharts) {
+                renderCharts(filteredData, appMap);
+            }
+        }
+
+        function renderCharts(data, appMap) {
+            // 准备月度数据
+            const monthMap = {};
+            data.forEach(item => {
+                const key = `${item.dateObj.getFullYear()}-${String(item.dateObj.getMonth() + 1).padStart(2, '0')}`;
+                if (!monthMap[key]) monthMap[key] = 0;
+                monthMap[key] += item.price;
+            });
+            
+            const sortedMonths = Object.keys(monthMap).sort();
+            const monthData = sortedMonths.map(m => monthMap[m]);
+
+            const ctxLine = document.getElementById('monthlyChart').getContext('2d');
+            if (monthlyChartInstance) monthlyChartInstance.destroy();
+            
+            monthlyChartInstance = new Chart(ctxLine, {
+                type: 'bar',
+                data: {
+                    labels: sortedMonths,
+                    datasets: [{
+                        label: '月度支出 (¥)',
+                        data: monthData,
+                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        borderColor: 'rgb(59, 130, 246)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            const sortedApps = Object.entries(appMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+            
+            const ctxPie = document.getElementById('appPieChart').getContext('2d');
+            if (pieChartInstance) pieChartInstance.destroy();
+
+            pieChartInstance = new Chart(ctxPie, {
+                type: 'doughnut',
+                data: {
+                    labels: sortedApps.map(x => x[0]),
+                    datasets: [{
+                        data: sortedApps.map(x => x[1]),
+                        backgroundColor: [
+                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('data-table-body');
+            tbody.innerHTML = '';
+
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const pageData = filteredData.slice(start, end);
+
+            pageData.forEach(item => {
+                const tr = document.createElement('tr');
+                
+                // 如果有图标，显示图片
+                let appDisplay = item.appName;
+                if (item.iconUrl) {
+                    appDisplay = `
+                        <div class="flex items-center">
+                            <img src="${item.iconUrl}" class="h-8 w-8 rounded-lg mr-2 app-icon border border-gray-200" alt="icon">
+                            <span class="truncate max-w-[120px]" title="${item.appName}">${item.appName}</span>
+                        </div>
+                    `;
+                }
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.rawDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-[150px]" title="${item.appName}">${appDisplay}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 truncate max-w-xs" title="${item.itemName}">${item.itemName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400 truncate max-w-xs" title="${item.extraInfo}">${item.extraInfo}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${item.price > 0 ? 'text-gray-900' : 'text-green-600'}">
+                        ${item.price > 0 ? '¥' + item.price.toFixed(2) : '免费'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('page-start').innerText = filteredData.length > 0 ? start + 1 : 0;
+            document.getElementById('page-end').innerText = Math.min(end, filteredData.length);
+            document.getElementById('page-total').innerText = filteredData.length;
+        }
+
+        function changePage(delta) {
+            const maxPage = Math.ceil(filteredData.length / pageSize);
+            const newPage = currentPage + delta;
+            if (newPage >= 1 && newPage <= maxPage) {
+                currentPage = newPage;
+                renderTable();
+            }
+        }
+
+        function exportToCSV() {
+            if (filteredData.length === 0) {
+                alert("没有数据可导出");
+                return;
+            }
+
+            let csvContent = "\uFEFF日期,订单号,商家/App,商品名称,价格,备注\n";
+            
+            filteredData.forEach(row => {
+                const escape = (txt) => `"${(txt || '').replace(/"/g, '""')}"`;
+                
+                const line = [
+                    escape(row.rawDate),
+                    escape(row.orderId),
+                    escape(row.appName),
+                    escape(row.itemName),
+                    row.price.toFixed(2),
+                    escape(row.extraInfo)
+                ].join(",");
+                csvContent += line + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "账单明细导出.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
