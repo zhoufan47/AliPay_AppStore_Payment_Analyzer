@@ -26,9 +26,14 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* 模态框动画 */
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: all 0.2s ease-out; }
+        .modal-exit { opacity: 1; transform: scale(1); }
+        .modal-exit-active { opacity: 0; transform: scale(0.95); transition: all 0.2s ease-in; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen">
+<body class="bg-gray-50 text-gray-800 min-h-screen relative">
 
     <!-- 顶部导航 -->
     <nav class="bg-white shadow-sm border-b border-gray-200">
@@ -43,13 +48,81 @@
                     <span id="format-badge" class="hidden px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
                         未知格式
                     </span>
-                    <a href="#" onclick="window.location.reload()" class="text-gray-500 hover:text-gray-700 text-sm">
+                    <a href="https://greasyfork.org/zh-CN/scripts/562397-apple-app-store-%E8%B4%A6%E5%8D%95%E7%BB%9F%E8%AE%A1%E5%8A%A9%E6%89%8B" class="text-gray-500 hover:text-red-600 text-sm flex items-center transition-colors">
+                        <i class="fa-solid fa-file-code mr-1"></i> 油猴子脚本
+                    </a>
+                    <!-- 更新日志按钮 -->
+                    <button onclick="toggleChangelog(true)" class="text-gray-500 hover:text-blue-600 text-sm flex items-center transition-colors">
+                        <i class="fa-solid fa-clock-rotate-left mr-1"></i> 更新日志
+                    </button>
+                    <!-- 重置按钮 -->
+                    <a href="#" onclick="window.location.reload()" class="text-gray-500 hover:text-red-600 text-sm flex items-center transition-colors">
                         <i class="fa-solid fa-rotate-right mr-1"></i> 重置
                     </a>
                 </div>
             </div>
         </div>
     </nav>
+
+    <!-- 更新日志模态框 -->
+    <div id="changelog-modal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <!-- 背景遮罩 -->
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="toggleChangelog(false)"></div>
+
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <!-- 模态框面板 -->
+                <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                    <!-- 头部 -->
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4 border-b border-gray-100">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-semibold leading-6 text-gray-900" id="modal-title">
+                                <i class="fa-solid fa-rocket text-blue-500 mr-2"></i>更新日志
+                            </h3>
+                            <button onclick="toggleChangelog(false)" class="text-gray-400 hover:text-gray-500">
+                                <i class="fa-solid fa-xmark text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white px-4 py-5 sm:p-6 max-h-[60vh] overflow-y-auto">
+                        <div class="space-y-6">
+                            <div class="relative pl-4 border-l-2 border-blue-500">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">v1.2.0</span>
+                                    <span class="text-xs text-gray-400">2026-01-13</span>
+                                </div>
+                                <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                                    <li><span class="font-medium text-gray-800">新增</span>：支持支付宝账单 CSV 格式导入（自动兼容 GBK/UTF-8 编码）。</li>
+                                    <li><span class="font-medium text-gray-800">优化</span>：搜索功能现已实时联动图表更新，数据分析更直观。</li>
+                                    <li><span class="font-medium text-gray-800">优化</span>：App Store 网页源码解析现在可以显示应用图标。</li>
+                                    <li><span class="font-medium text-gray-800">优化</span>：App Store 模式现已过滤余额充值订单。</li>
+                                </ul>
+                            </div>
+                            <div class="relative pl-4 border-l-2 border-gray-200">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">v1.0.0</span>
+                                    <span class="text-xs text-gray-400">2026-12-30</span>
+                                </div>
+                                <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                                    <li><span class="font-medium text-gray-800">发布</span>：初始版本上线。</li>
+                                    <li><span class="font-medium text-gray-800">功能</span>：支持 App Store 文本格式解析。</li>
+                                    <li><span class="font-medium text-gray-800">功能</span>：月度趋势图表与消费排行榜。</li>
+                                    <li><span class="font-medium text-gray-800">功能</span>：支持导出为 CSV 表格。</li>
+                                </ul>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- 底部 -->
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="button" onclick="toggleChangelog(false)" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
@@ -221,6 +294,16 @@
     </main>
 
     <script>
+        // --- UI 控制 ---
+        function toggleChangelog(show) {
+            const modal = document.getElementById('changelog-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
         // --- 核心状态 ---
         let allData = [];
         let filteredData = [];
