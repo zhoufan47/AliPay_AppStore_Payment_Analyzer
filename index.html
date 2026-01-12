@@ -544,10 +544,17 @@
                 items.forEach(item => {
                     const titleEl = item.querySelector('.pli-title');
                     const itemName = titleEl ? titleEl.innerText.trim() : "未知商品";
-
+					if (itemName.indexOf('为 Apple 账户充值')>0 ||
+						itemName.indexOf('App Store 与 iTunes Store 礼品')>0 ||
+						itemName.indexOf('Add funds to Apple Account')>0 || // 英文情况
+						itemName.indexOf('App Store & iTunes Gift Card')>0) { // 英文情况
+						return;
+					}
                     const publisherEl = item.querySelector('.pli-publisher');
                     const appName = publisherEl ? publisherEl.innerText.trim() : "未知应用";
-
+					if (appName === ''){
+						return;
+					}
                     const priceEl = item.querySelector('.pli-price');
                     const priceStr = priceEl ? priceEl.innerText.trim() : "¥0.00";
                     const price = parsePrice(priceStr);
